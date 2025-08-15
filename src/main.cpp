@@ -1,6 +1,7 @@
 #include <windows.h>
 #include <shellscalingapi.h>
 #include <gdiplus.h>
+#include <commctrl.h>
 #include <vector>
 #include <string>
 #include <memory>
@@ -346,28 +347,28 @@ void ShowSettingsWindow() {
     SetWindowLongPtrW(g_settingsWnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(SettingsWndProc));
 
     CreateWindowExW(0, L"BUTTON", L"Top-Left", WS_CHILD | WS_VISIBLE | BS_AUTORADIOBUTTON,
-                    10, 10, 100, 24, g_settingsWnd, reinterpret_cast<HMENU>(IDC_RAD_TL), g_hInstance, nullptr);
+                    10, 10, 100, 24, g_settingsWnd, (HMENU)(INT_PTR)IDC_RAD_TL, g_hInstance, nullptr);
     CreateWindowExW(0, L"BUTTON", L"Top-Right", WS_CHILD | WS_VISIBLE | BS_AUTORADIOBUTTON,
-                    130, 10, 100, 24, g_settingsWnd, reinterpret_cast<HMENU>(IDC_RAD_TR), g_hInstance, nullptr);
+                    130, 10, 100, 24, g_settingsWnd, (HMENU)(INT_PTR)IDC_RAD_TR, g_hInstance, nullptr);
     CreateWindowExW(0, L"BUTTON", L"Bottom-Left", WS_CHILD | WS_VISIBLE | BS_AUTORADIOBUTTON,
-                    10, 40, 100, 24, g_settingsWnd, reinterpret_cast<HMENU>(IDC_RAD_BL), g_hInstance, nullptr);
+                    10, 40, 100, 24, g_settingsWnd, (HMENU)(INT_PTR)IDC_RAD_BL, g_hInstance, nullptr);
     CreateWindowExW(0, L"BUTTON", L"Bottom-Right", WS_CHILD | WS_VISIBLE | BS_AUTORADIOBUTTON,
-                    130, 40, 110, 24, g_settingsWnd, reinterpret_cast<HMENU>(IDC_RAD_BR), g_hInstance, nullptr);
+                    130, 40, 110, 24, g_settingsWnd, (HMENU)(INT_PTR)IDC_RAD_BR, g_hInstance, nullptr);
 
     CreateWindowExW(0, L"BUTTON", L"Click-through", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
-                    10, 80, 120, 24, g_settingsWnd, reinterpret_cast<HMENU>(IDC_CHK_CLICKTHRU), g_hInstance, nullptr);
+                    10, 80, 120, 24, g_settingsWnd, (HMENU)(INT_PTR)IDC_CHK_CLICKTHRU, g_hInstance, nullptr);
 
     // Opacity slider
     INITCOMMONCONTROLSEX icc{ sizeof(icc), ICC_BAR_CLASSES };
     InitCommonControlsEx(&icc);
     CreateWindowExW(0, TRACKBAR_CLASSW, L"", WS_CHILD | WS_VISIBLE | TBS_AUTOTICKS,
-                    10, 110, 200, 32, g_settingsWnd, reinterpret_cast<HMENU>(IDC_SLD_OPACITY), g_hInstance, nullptr);
+                    10, 110, 200, 32, g_settingsWnd, (HMENU)(INT_PTR)IDC_SLD_OPACITY, g_hInstance, nullptr);
     SendMessageW(GetDlgItem(g_settingsWnd, IDC_SLD_OPACITY), TBM_SETRANGE, TRUE, MAKELONG(40, 100));
     SendMessageW(GetDlgItem(g_settingsWnd, IDC_SLD_OPACITY), TBM_SETPOS, TRUE, g_settings.opacityPercent);
 
     // Color combo
     CreateWindowExW(0, L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST,
-                    10, 150, 160, 100, g_settingsWnd, reinterpret_cast<HMENU>(IDC_CMB_COLOR), g_hInstance, nullptr);
+                    10, 150, 160, 100, g_settingsWnd, (HMENU)(INT_PTR)IDC_CMB_COLOR, g_hInstance, nullptr);
     HWND hCmb = GetDlgItem(g_settingsWnd, IDC_CMB_COLOR);
     SendMessageW(hCmb, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Blue"));
     SendMessageW(hCmb, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Green"));
@@ -402,18 +403,6 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
                 ApplyClickThroughAll(checked);
                 return 0;
             }
-            break;
-        }
-        case WM_HSCROLL: {
-            if (reinterpret_cast<HWND>(lParam) == GetDlgItem(hwnd, IDC_SLD_OPACITY)) {
-                int pos = static_cast<int>(SendMessageW(reinterpret_cast<HWND>(lParam), TBM_GETPOS, 0, 0));
-                g_settings.opacityPercent = max(40, min(100, pos));
-                RenderAll();
-                return 0;
-            }
-            break;
-        }
-        case WM_COMMAND: {
             if (HIWORD(wParam) == CBN_SELCHANGE && LOWORD(wParam) == IDC_CMB_COLOR) {
                 HWND cmb = reinterpret_cast<HWND>(lParam);
                 int sel = static_cast<int>(SendMessageW(cmb, CB_GETCURSEL, 0, 0));
@@ -423,6 +412,15 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
                     case 2: g_settings.accentColor = RGB(220, 0, 0); break;
                     case 3: g_settings.accentColor = RGB(255, 255, 255); break;
                 }
+                RenderAll();
+                return 0;
+            }
+            break;
+        }
+        case WM_HSCROLL: {
+            if (reinterpret_cast<HWND>(lParam) == GetDlgItem(hwnd, IDC_SLD_OPACITY)) {
+                int pos = static_cast<int>(SendMessageW(reinterpret_cast<HWND>(lParam), TBM_GETPOS, 0, 0));
+                g_settings.opacityPercent = max(40, min(100, pos));
                 RenderAll();
                 return 0;
             }
