@@ -1,0 +1,26 @@
+*** Add File: .github/workflows/windows.yml
+name: Build Windows
+on: [push, workflow_dispatch]
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+      - name: Build
+        run: cmake --build build --config Release
+      - name: Build installer
+        run: '"C:\\Program Files (x86)\\NSIS\\makensis.exe" installer\\installer.nsi'
+      - name: Upload exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: DPIOverlay-Exe
+          path: build/Release/DPIOverlay.exe
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: DPIOverlay-Installer
+          path: DPIOverlay-Setup-0.1.0.exe
+
+
