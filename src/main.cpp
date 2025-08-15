@@ -38,6 +38,22 @@ static vector<std::unique_ptr<OverlayWindow>> g_windows;
 static HINSTANCE g_hInstance = nullptr;
 static const int HOTKEY_TOGGLE = 1;
 static const int HOTKEY_QUIT = 2;
+static const int HOTKEY_SETTINGS = 3;
+
+enum class BadgeCorner {
+    TopLeft = 0,
+    TopRight = 1,
+    BottomLeft = 2,
+    BottomRight = 3
+};
+
+struct GlobalSettings {
+    BadgeCorner badgeCorner = BadgeCorner::TopLeft;
+    bool clickThrough = false;
+};
+
+static GlobalSettings g_settings{};
+static HWND g_settingsWnd = nullptr;
 
 // Forward declarations
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
@@ -45,6 +61,10 @@ void CreateWindowsForAllMonitors();
 void DestroyAllWindows();
 void RenderOverlay(OverlayWindow* window);
 void UpdateClickThrough(OverlayWindow* window, bool enable);
+void RenderAll();
+void ApplyClickThroughAll(bool enable);
+void ShowSettingsWindow();
+LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 RECT GetMonitorRect(HMONITOR hMon) {
     MONITORINFO mi{};
@@ -64,6 +84,7 @@ void ToggleAllClickThrough() {
         w->clickThrough = !w->clickThrough;
         UpdateClickThrough(w.get(), w->clickThrough);
     }
+    g_settings.clickThrough = g_windows.empty() ? g_settings.clickThrough : g_windows.front()->clickThrough;
 }
 
 void UpdateClickThrough(OverlayWindow* window, bool enable) {
@@ -121,6 +142,19 @@ void DestroyAllWindows() {
         if (w->hwnd) DestroyWindow(w->hwnd);
     }
     g_windows.clear();
+}
+
+void RenderAll() {
+    for (auto& w : g_windows) {
+        RenderOverlay(w.get());
+    }
+}
+
+void ApplyClickThroughAll(bool enable) {
+    for (auto& w : g_windows) {
+        w->clickThrough = enable;
+        UpdateClickThrough(w.get(), enable);
+    }
 }
 
 // Helper to create a 32-bit ARGB DIB section and a mem DC for UpdateLayeredWindow
@@ -183,12 +217,26 @@ void DrawDemo(Gdiplus::Graphics& g, int pixelWidth, int pixelHeight, float dpiX,
 
     Gdiplus::SolidBrush badgeBg(Gdiplus::Color(180, 30, 30, 30));
     Gdiplus::SolidBrush textBrush(Gdiplus::Color(240, 255, 255, 255));
-    g.FillRectangle(&badgeBg, 20, 20, badgeW, badgeH);
+    int marginX = 20;
+    int marginY = 20;
+    int x = marginX;
+    int y = marginY;
+    switch (g_settings.badgeCorner) {
+        case BadgeCorner::TopLeft:
+            x = marginX; y = marginY; break;
+        case BadgeCorner::TopRight:
+            x = pixelWidth - badgeW - marginX; y = marginY; break;
+        case BadgeCorner::BottomLeft:
+            x = marginX; y = pixelHeight - badgeH - marginY; break;
+        case BadgeCorner::BottomRight:
+            x = pixelWidth - badgeW - marginX; y = pixelHeight - badgeH - marginY; break;
+    }
+    g.FillRectangle(&badgeBg, x, y, badgeW, badgeH);
 
     Gdiplus::FontFamily ff(L"Segoe UI");
     Gdiplus::Font font(&ff, 14.0f * scaleY, Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
     wstring label = L"Overlay DPI: " + std::to_wstring(static_cast<int>(dpiX * 100 / 96)) + L"%";
-    Gdiplus::RectF layout(static_cast<Gdiplus::REAL>(24), static_cast<Gdiplus::REAL>(24), static_cast<Gdiplus::REAL>(badgeW - 8), static_cast<Gdiplus::REAL>(badgeH - 8));
+    Gdiplus::RectF layout(static_cast<Gdiplus::REAL>(x + 4), static_cast<Gdiplus::REAL>(y + 4), static_cast<Gdiplus::REAL>(badgeW - 8), static_cast<Gdiplus::REAL>(badgeH - 8));
     g.DrawString(label.c_str(), -1, &font, layout, nullptr, &textBrush);
 }
 
@@ -270,6 +318,75 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     }
 }
 
+// IDs for settings controls
+static const int IDC_RAD_TL = 1001;
+static const int IDC_RAD_TR = 1002;
+static const int IDC_RAD_BL = 1003;
+static const int IDC_RAD_BR = 1004;
+static const int IDC_CHK_CLICKTHRU = 1005;
+
+void ShowSettingsWindow() {
+    if (g_settingsWnd) {
+        ShowWindow(g_settingsWnd, SW_SHOWNORMAL);
+        SetForegroundWindow(g_settingsWnd);
+        return;
+    }
+    const int width = 260;
+    const int height = 180;
+    g_settingsWnd = CreateWindowExW(WS_EX_TOOLWINDOW, L"STATIC", L"Overlay Settings",
+                                    WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU,
+                                    CW_USEDEFAULT, CW_USEDEFAULT, width, height,
+                                    nullptr, nullptr, g_hInstance, nullptr);
+    SetWindowLongPtrW(g_settingsWnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(SettingsWndProc));
+
+    CreateWindowExW(0, L"BUTTON", L"Top-Left", WS_CHILD | WS_VISIBLE | BS_AUTORADIOBUTTON,
+                    10, 10, 100, 24, g_settingsWnd, reinterpret_cast<HMENU>(IDC_RAD_TL), g_hInstance, nullptr);
+    CreateWindowExW(0, L"BUTTON", L"Top-Right", WS_CHILD | WS_VISIBLE | BS_AUTORADIOBUTTON,
+                    130, 10, 100, 24, g_settingsWnd, reinterpret_cast<HMENU>(IDC_RAD_TR), g_hInstance, nullptr);
+    CreateWindowExW(0, L"BUTTON", L"Bottom-Left", WS_CHILD | WS_VISIBLE | BS_AUTORADIOBUTTON,
+                    10, 40, 100, 24, g_settingsWnd, reinterpret_cast<HMENU>(IDC_RAD_BL), g_hInstance, nullptr);
+    CreateWindowExW(0, L"BUTTON", L"Bottom-Right", WS_CHILD | WS_VISIBLE | BS_AUTORADIOBUTTON,
+                    130, 40, 110, 24, g_settingsWnd, reinterpret_cast<HMENU>(IDC_RAD_BR), g_hInstance, nullptr);
+
+    CreateWindowExW(0, L"BUTTON", L"Click-through", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
+                    10, 80, 120, 24, g_settingsWnd, reinterpret_cast<HMENU>(IDC_CHK_CLICKTHRU), g_hInstance, nullptr);
+
+    // Initialize states
+    CheckRadioButton(g_settingsWnd, IDC_RAD_TL, IDC_RAD_BR, IDC_RAD_TL + static_cast<int>(g_settings.badgeCorner));
+    SendMessageW(GetDlgItem(g_settingsWnd, IDC_CHK_CLICKTHRU), BM_SETCHECK, g_settings.clickThrough ? BST_CHECKED : BST_UNCHECKED, 0);
+
+    ShowWindow(g_settingsWnd, SW_SHOWNORMAL);
+}
+
+LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    switch (msg) {
+        case WM_COMMAND: {
+            int id = LOWORD(wParam);
+            if (id == IDC_RAD_TL || id == IDC_RAD_TR || id == IDC_RAD_BL || id == IDC_RAD_BR) {
+                int selected = id - IDC_RAD_TL;
+                g_settings.badgeCorner = static_cast<BadgeCorner>(selected);
+                RenderAll();
+                return 0;
+            }
+            if (id == IDC_CHK_CLICKTHRU) {
+                BOOL checked = (SendMessageW(reinterpret_cast<HWND>(lParam), BM_GETCHECK, 0, 0) == BST_CHECKED);
+                g_settings.clickThrough = checked;
+                ApplyClickThroughAll(checked);
+                return 0;
+            }
+            break;
+        }
+        case WM_CLOSE:
+            DestroyWindow(hwnd);
+            return 0;
+        case WM_DESTROY:
+            if (hwnd == g_settingsWnd) g_settingsWnd = nullptr;
+            return 0;
+        default:
+            return DefWindowProcW(hwnd, msg, wParam, lParam);
+    }
+}
+
 int APIENTRY wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int) {
     g_hInstance = hInstance;
 
@@ -291,9 +408,10 @@ int APIENTRY wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int) {
 
     // Message loop
     MSG msg;
-    // Register global hotkeys: Ctrl+Alt+T to toggle click-through, Ctrl+Alt+Q to quit
+    // Register global hotkeys: Ctrl+Alt+T toggle click-through, Ctrl+Alt+Q quit, Ctrl+Alt+S settings
     RegisterHotKey(nullptr, HOTKEY_TOGGLE, MOD_CONTROL | MOD_ALT, 'T');
     RegisterHotKey(nullptr, HOTKEY_QUIT, MOD_CONTROL | MOD_ALT, 'Q');
+    RegisterHotKey(nullptr, HOTKEY_SETTINGS, MOD_CONTROL | MOD_ALT, 'S');
 
     while (GetMessageW(&msg, nullptr, 0, 0)) {
         if (msg.message == WM_HOTKEY) {
@@ -302,6 +420,9 @@ int APIENTRY wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int) {
                 continue;
             } else if (msg.wParam == HOTKEY_QUIT) {
                 PostQuitMessage(0);
+                continue;
+            } else if (msg.wParam == HOTKEY_SETTINGS) {
+                ShowSettingsWindow();
                 continue;
             }
         }
