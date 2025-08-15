@@ -211,7 +211,6 @@ void RenderOverlay(OverlayWindow* window) {
 
     const float dpiX = static_cast<float>(GetDpiForWindow(window->hwnd));
     const float dpiY = dpiX;
-    g.SetDpi(dpiX, dpiY);
 
     DrawDemo(g, w, h, dpiX, dpiY);
 
