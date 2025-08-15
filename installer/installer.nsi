@@ -21,7 +21,7 @@ UninstPage instfiles
 
 Section "Install"
   SetOutPath "$INSTDIR"
-  File /r "build\Release\${EXE_NAME}"
+  File /r "..\build\Release\${EXE_NAME}"
   CreateShortCut "$SMPROGRAMS\${APPNAME}.lnk" "$INSTDIR\${EXE_NAME}"
   CreateShortCut "$DESKTOP\${APPNAME}.lnk" "$INSTDIR\${EXE_NAME}"
   WriteUninstaller "$INSTDIR\Uninstall.exe"
