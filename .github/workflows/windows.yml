@@ -1,11 +1,14 @@
-*** Add File: .github/workflows/windows.yml
 name: Build Windows
-on: [push, workflow_dispatch]
+on:
+  push:
+  workflow_dispatch:
 jobs:
   build:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Install NSIS
+        run: choco install nsis -y
       - name: Configure
         run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64
       - name: Build
@@ -22,5 +25,3 @@ jobs:
         with:
           name: DPIOverlay-Installer
           path: DPIOverlay-Setup-0.1.0.exe
-
-
