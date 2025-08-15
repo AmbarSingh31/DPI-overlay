@@ -50,6 +50,8 @@ enum class BadgeCorner {
 struct GlobalSettings {
     BadgeCorner badgeCorner = BadgeCorner::TopLeft;
     bool clickThrough = false;
+    int opacityPercent = 100; // 40..100
+    COLORREF accentColor = RGB(0, 122, 255);
 };
 
 static GlobalSettings g_settings{};
@@ -204,8 +206,10 @@ void DrawDemo(Gdiplus::Graphics& g, int pixelWidth, int pixelHeight, float dpiX,
     Gdiplus::Rect full(0, 0, pixelWidth, pixelHeight);
     g.FillRectangle(&clearBrush, full);
 
-    // Edge outline (crisp, 2px aligned)
-    Gdiplus::Pen outline(Gdiplus::Color(200, 0, 122, 255), 2.0f);
+    // Edge outline (crisp, 2px aligned) with opacity/accent
+    BYTE a = static_cast<BYTE>(g_settings.opacityPercent * 255 / 100);
+    Gdiplus::Color accent(a, GetRValue(g_settings.accentColor), GetGValue(g_settings.accentColor), GetBValue(g_settings.accentColor));
+    Gdiplus::Pen outline(accent, 2.0f);
     outline.SetAlignment(Gdiplus::PenAlignmentInset);
     g.DrawRectangle(&outline, 1, 1, pixelWidth - 2, pixelHeight - 2);
 
@@ -215,8 +219,8 @@ void DrawDemo(Gdiplus::Graphics& g, int pixelWidth, int pixelHeight, float dpiX,
     const int badgeW = static_cast<int>(160 * scaleX);
     const int badgeH = static_cast<int>(48 * scaleY);
 
-    Gdiplus::SolidBrush badgeBg(Gdiplus::Color(180, 30, 30, 30));
-    Gdiplus::SolidBrush textBrush(Gdiplus::Color(240, 255, 255, 255));
+    Gdiplus::SolidBrush badgeBg(Gdiplus::Color(static_cast<BYTE>(a * 0.8), 30, 30, 30));
+    Gdiplus::SolidBrush textBrush(Gdiplus::Color(a, 255, 255, 255));
     int marginX = 20;
     int marginY = 20;
     int x = marginX;
@@ -324,6 +328,8 @@ static const int IDC_RAD_TR = 1002;
 static const int IDC_RAD_BL = 1003;
 static const int IDC_RAD_BR = 1004;
 static const int IDC_CHK_CLICKTHRU = 1005;
+static const int IDC_SLD_OPACITY = 1006;
+static const int IDC_CMB_COLOR = 1007;
 
 void ShowSettingsWindow() {
     if (g_settingsWnd) {
@@ -331,8 +337,8 @@ void ShowSettingsWindow() {
         SetForegroundWindow(g_settingsWnd);
         return;
     }
-    const int width = 260;
-    const int height = 180;
+    const int width = 320;
+    const int height = 230;
     g_settingsWnd = CreateWindowExW(WS_EX_TOOLWINDOW, L"STATIC", L"Overlay Settings",
                                     WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU,
                                     CW_USEDEFAULT, CW_USEDEFAULT, width, height,
@@ -350,6 +356,28 @@ void ShowSettingsWindow() {
 
     CreateWindowExW(0, L"BUTTON", L"Click-through", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
                     10, 80, 120, 24, g_settingsWnd, reinterpret_cast<HMENU>(IDC_CHK_CLICKTHRU), g_hInstance, nullptr);
+
+    // Opacity slider
+    INITCOMMONCONTROLSEX icc{ sizeof(icc), ICC_BAR_CLASSES };
+    InitCommonControlsEx(&icc);
+    CreateWindowExW(0, TRACKBAR_CLASSW, L"", WS_CHILD | WS_VISIBLE | TBS_AUTOTICKS,
+                    10, 110, 200, 32, g_settingsWnd, reinterpret_cast<HMENU>(IDC_SLD_OPACITY), g_hInstance, nullptr);
+    SendMessageW(GetDlgItem(g_settingsWnd, IDC_SLD_OPACITY), TBM_SETRANGE, TRUE, MAKELONG(40, 100));
+    SendMessageW(GetDlgItem(g_settingsWnd, IDC_SLD_OPACITY), TBM_SETPOS, TRUE, g_settings.opacityPercent);
+
+    // Color combo
+    CreateWindowExW(0, L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST,
+                    10, 150, 160, 100, g_settingsWnd, reinterpret_cast<HMENU>(IDC_CMB_COLOR), g_hInstance, nullptr);
+    HWND hCmb = GetDlgItem(g_settingsWnd, IDC_CMB_COLOR);
+    SendMessageW(hCmb, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Blue"));
+    SendMessageW(hCmb, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Green"));
+    SendMessageW(hCmb, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Red"));
+    SendMessageW(hCmb, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"White"));
+    int sel = 0; // default Blue
+    if (g_settings.accentColor == RGB(0, 200, 0)) sel = 1;
+    else if (g_settings.accentColor == RGB(220, 0, 0)) sel = 2;
+    else if (g_settings.accentColor == RGB(255, 255, 255)) sel = 3;
+    SendMessageW(hCmb, CB_SETCURSEL, sel, 0);
 
     // Initialize states
     CheckRadioButton(g_settingsWnd, IDC_RAD_TL, IDC_RAD_BR, IDC_RAD_TL + static_cast<int>(g_settings.badgeCorner));
@@ -372,6 +400,30 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
                 BOOL checked = (SendMessageW(reinterpret_cast<HWND>(lParam), BM_GETCHECK, 0, 0) == BST_CHECKED);
                 g_settings.clickThrough = checked;
                 ApplyClickThroughAll(checked);
+                return 0;
+            }
+            break;
+        }
+        case WM_HSCROLL: {
+            if (reinterpret_cast<HWND>(lParam) == GetDlgItem(hwnd, IDC_SLD_OPACITY)) {
+                int pos = static_cast<int>(SendMessageW(reinterpret_cast<HWND>(lParam), TBM_GETPOS, 0, 0));
+                g_settings.opacityPercent = max(40, min(100, pos));
+                RenderAll();
+                return 0;
+            }
+            break;
+        }
+        case WM_COMMAND: {
+            if (HIWORD(wParam) == CBN_SELCHANGE && LOWORD(wParam) == IDC_CMB_COLOR) {
+                HWND cmb = reinterpret_cast<HWND>(lParam);
+                int sel = static_cast<int>(SendMessageW(cmb, CB_GETCURSEL, 0, 0));
+                switch (sel) {
+                    case 0: g_settings.accentColor = RGB(0, 122, 255); break;
+                    case 1: g_settings.accentColor = RGB(0, 200, 0); break;
+                    case 2: g_settings.accentColor = RGB(220, 0, 0); break;
+                    case 3: g_settings.accentColor = RGB(255, 255, 255); break;
+                }
+                RenderAll();
                 return 0;
             }
             break;

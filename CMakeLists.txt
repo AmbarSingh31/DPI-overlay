@@ -21,9 +21,11 @@ if (MSVC)
   target_link_libraries(DPIOverlay PRIVATE
     Gdiplus
     Shcore
+    Shell32
     User32
     Gdi32
     Dwmapi
+    Comctl32
   )
 endif()
 
